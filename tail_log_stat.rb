@@ -53,7 +53,7 @@ class ARSqlLogStat
     end
   end
   
-  # [ model class name,    avg. # loads per request,   avg. time per request ]
+  # [ avg. # loads per request,   avg. time per request, model class name ]
   # notes average over the union might not be good enough a good enough metrics, b/c some request might contain very little or no loads for a specific model
   # it's generally a good idea to control your inputs for a specific log, so results can be resonably consistent to compare with
   def averges_for_request request
