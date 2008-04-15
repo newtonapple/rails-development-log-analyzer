@@ -3,7 +3,7 @@ class RailsLogStat
   
   class RequestStatistics
     attr_accessor :sql_stats         # {'Article' => [0.2, 0.42332...], 'Body' => [0.45, 0.5923...], ... }
-    attr_accessor :rendered_stats
+    attr_accessor :rendered_stats    # {'/layout/application' => [0.2, 0.42332...], 'resources/edit' => [0.45, 0.5923...], ... }
     attr_accessor :completion_time, :rendering_time, :db_time
     attr_accessor :http_status, :url
     
