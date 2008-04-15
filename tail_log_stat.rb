@@ -58,7 +58,7 @@ class RailsLogStat
       request, method  = match[1], match[2]
       @current_request = "#{request} [#{method}]"   # => "ActionController#index [GET]"
       @current_request_stats = (@requests[@current_request] << RequestStatistics.new).last # newest request stats is the one that just pushed into the buffer
-      @requests[@current_request].unshift if @requests[@current_request].size == @max_stats_per_request  # pop out oldest request stats if buffer is full
+      @requests[@current_request].unshift if @requests[@current_request].size > @max_stats_per_request  # pop out oldest request stats if buffer is full
     elsif match = line.match( SQL_LOAD_MATCHER )
       if @current_request # guard against old queries that doesn't have leading request log
         model_name, timing = match[1], match[2].to_f
