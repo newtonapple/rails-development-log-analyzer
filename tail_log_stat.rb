@@ -3,28 +3,31 @@ class RailsLogStat
   
   class RequestStatistics
     attr_accessor :sql_stats         # {'Article' => [0.2, 0.42332...], 'Body' => [0.45, 0.5923...], ... }
-    attr_accessor :rendering_stats
+    attr_accessor :rendered_stats
     attr_accessor :completion_time, :rendering_time, :db_time
     attr_accessor :http_status, :url
     
     def initialize
-      @sql_stats = Hash.new{ |hash,key| hash[key]=[] }
-      @rendering_stats = Hash.new{ |hash,key| hash[key]=[] }
+      @sql_stats, @rendered_stats = Hash.new{ |hash,key| hash[key]=[] }, Hash.new{ |hash,key| hash[key]=[] }
     end
   end
   
   # Processing IndexController#index (for 127.0.0.1 at 2008-04-13 06:40:20) [GET]
   # $1 => 'ActionController#index', $2 => 'GET'
-  BEGIN_REQUEST_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST)\]$/  
+  REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST)\]$/  
   
   
   # ModelClassName Load (0.000292)SELECT * FROM `answers` WHERE `id` = 2000
   # $1 => ModelClassName, $2 => 0.0453 
   SQL_LOAD_MATCHER = /([A-Z]\S+)\s+Load.+\((\d+\.\d+)\).+SELECT/
   
+  # Rendered layout/application (0.00995)
+  # $1 => layout/application, $2 => 0.00995
+  RENDERED_MATCHER = /^Rendered (\S+) \((\d+\.\d+)\)$/
+  
   # Completed in 3.48602 (0 reqs/sec) | Rendering: 1.53868 (44%) | DB: 0.79623 (22%) | 200 OK [http://www.example.com]
   # $1 => 3.48602, $2 => 1.53868, $3 => 44, $4 => 0.79623, $5 => 22, $6 => 200 OK, $7 => http://www.example.com
-  REQUEST_COMPLETION_MATCHER = /^Completed in (\d+\.\d+).+Rendering: (\d+\.\d+) \((\d+)%\).+DB: (\d+\.\d+) \((\d+)%\) \| ([1-5]\d{2} \S+) \[(.+)\]/
+  REQUEST_COMPLETION_MATCHER = /^Completed in (\d+\.\d+).+Rendering: (\d+\.\d+) \((\d+)%\).+DB: (\d+\.\d+) \((\d+)%\) \| ([1-5]\d{2} \S+) \[(.+)\]$/
     
   attr_accessor :log_file_path, :max_stats_per_request
 
@@ -49,9 +52,9 @@ class RailsLogStat
     end
   end
   
-  # Pattern matches message line
+  # Pattern match each line w/ Regexp
   def parse_line line
-    if match = line.match( BEGIN_REQUEST_MATCHER )  
+    if match = line.match( REQUEST_BEGIN_MATCHER )  
       request, method  = match[1], match[2]
       @current_request = "#{request} [#{method}]"   # => "ActionController#index [GET]"
       @current_request_stats = (@requests[@current_request] << RequestStatistics.new).last # newest request stats is the one that just pushed into the buffer
@@ -61,27 +64,49 @@ class RailsLogStat
         model_name, timing = match[1], match[2].to_f
         @current_request_stats.sql_stats[model_name] << timing
       end
+    elsif match = line.match( RENDERED_MATCHER )
+      rendered_file_name, timing = match[1], match[2].to_f
+      @current_request_stats.rendered_stats[rendered_file_name] << timing
+    elsif match = line.match( REQUEST_COMPLETION_MATCHER )
+      if @current_request
+        @current_request_stats.completion_time = match[0].to_f
+        @current_request_stats.rendering_time  = match[2].to_f
+        @current_request_stats.db_time         = match[4].to_f
+        @current_request_stats.http_status     = match[6]
+        @current_request_stats.url             = match[7]
+      end
     end
   end
   
-  # [ avg. # loads per request,   avg. time per request, model class name ]
+  # Array of [ avg. # loads per request,   avg. time per request, model class name ]
   # notes average over the union might not be a good enough metrics, b/c some request might contain very little or no loads info for a specific model
   # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with
-  def averges_for_request request
+  def sql_averges_for_request request
+    averages_for_request request, :sql_stats
+  end
+  
+  def rendered_averages_for_request request
+    averages_for_request request, :rendered_stats
+  end
+  
+  def averages_for_request request, stat_type
     unless (num_of_requests = @requests[request].size) == 0
-      model_names = @requests[request].inject(Set.new){ |model_names, request_stats| model_names |= Set.new(request_stats.sql_stats.keys) }.to_a # union of all model names
+      # union of all stat names
+      stat_names = @requests[request].inject(Set.new){ |stat_names, request_stats| stat_names |= Set.new(request_stats.send(stat_type).keys) }.to_a
       timing_sums = Hash.new{ |hash,key| hash[key]=0.0 }
-      load_count_sums = Hash.new{ |hash,key| hash[key]=0 }
+      count_sums = Hash.new{ |hash,key| hash[key]=0 }
       
       @requests[request].each do |request_stats|
-        model_names.each do |model_name|
-          timing_sums[model_name] += request_stats.sql_stats[model_name].inject(0.0){|sum, t| sum += t } # note, this can modify request_stats's keys since we have default hashes
-          load_count_sums[model_name] += request_stats.sql_stats[model_name].size
+        stat_names.each do |stat_name|
+          # note, this can modify request_stats's keys since we have default hashes
+          timing_sums[stat_name] += request_stats.send(stat_type)[stat_name].inject(0.0){|sum, t| sum += t } 
+          count_sums[stat_name]  += request_stats.send(stat_type)[stat_name].size
         end
       end
+      
       num_of_requests = num_of_requests.to_f
-      model_names.collect do |model_name|
-        [ load_count_sums[model_name] / num_of_requests, timing_sums[model_name] / num_of_requests, model_name ]
+      stat_names.collect do |stat_name|
+        [ count_sums[stat_name] / num_of_requests, timing_sums[stat_name] / num_of_requests, stat_name ]
       end
     else
       []
@@ -129,7 +154,7 @@ if __FILE__ == $0
         puts "#{'='*80}"
         puts headers
         puts '-' * 80
-        stats = log_stat.averges_for_request(input)
+        stats = log_stat.sql_averges_for_request(input)
         stats.sort!{ |stat1, stat2| stat2[1] <=> stat1[1] }
         stats.each do |stat|
           total_time_spent_per_request  = ('%.2f' % stat[0] )
