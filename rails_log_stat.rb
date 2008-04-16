@@ -167,7 +167,7 @@ if __FILE__ == $0
         end
         
         output = [SEPERATOR, "#{request_name}: #{log_stat.request_count request_name} calls.", 
-                  SEPERATOR, headers_output, DATA_SEPERATOR] 
+                  DATA_SEPERATOR, headers_output, DATA_SEPERATOR] 
         
         stats = log_stat.averages_for_request( request_name, stat_type )
         stats.sort!{ |stat1, stat2| stat2[1] <=> stat1[1] }

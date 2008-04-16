@@ -1,0 +1,40 @@
+= General Info
+
+rails_log_stat.rb parses a given Rails development log file and builds an in-memory data structure to provide various statistics about your Rails app.  
+
+The two primary statistics that the program currenting provides are:
+# SQL total time span and query calls on a per Model per request basis.
+# Rendered time break down on a per template per request basis.
+
+rails_log_stat.rb is a very easy way to gain some perspectives about the bottlenecks of your Rails application (most of the time is due to slow SQLs).
+Although, log files should not be taken as an absolute truth about your application's performance, it does provide a fairly good relative comparison.
+Personally, I found it quite helpful to start out my optimization process by spotting out big offending queries and eliminating them, and rails_log_stat.rb 
+will help you find those slow queries and lagging renders a lot faster.
+  
+= Usage
+
+== Tail your Rails development log
+  ruby rails_log_stat.rb /path/to/your/development.log 'tail -f'
+
+Note: 'tail -f' is optional and is use by default.  After running this command just run your App as you normally would w/ SQL log turned on.  
+Or, you can hop to problematic area and run through some scenarios.  After you are satisfied, you should come back to the log analyzer and look at your statistics.  
+
+== Commands 
+ l  => show a listing of requests the analyzer have collected.
+The the request naming convention is: ControllerName#action [HTTP_METHOD] 
+ 
+ r REQUEST_NAME  => show rendered stats
+ s REQUEST_NAME  => show SQL stats
+ 
+== Cat 
+Alternatively you can use cat to pipe an existing log file into the analyzer.
+  ruby rails_log_stat.rb /path/to/your/development.log cat
+
+
+= TODO
+* Identify the overall slowest queries
+* Identify the overall slowest renders
+* A way to display collected Rails request completion stats.
+* Other output formats
+
+Copyright David Dai.
