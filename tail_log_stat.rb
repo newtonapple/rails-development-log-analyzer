@@ -18,8 +18,8 @@ class RailsLogStat
   
   
   # ModelClassName Load (0.000292)SELECT * FROM `answers` WHERE `id` = 2000
-  # $1 => ModelClassName, $2 => 0.0453 
-  SQL_LOAD_MATCHER = /([A-Z]\S+)\s+Load.+\((\d+\.\d+)\).+SELECT/
+  # $1 => ModelClassName, $2 => Load, $3 => 0.0453, $4 => SELECT
+  SQL_LOAD_MATCHER = /([A-Z]\S+)\s+(Load|Update|Create|Destroy).+\((\d+\.\d+)\).+(SELECT|UPDATE|INSERT|DELETE)/
   
   # Rendered layout/application (0.00995)
   # $1 => layout/application, $2 => 0.00995
@@ -61,8 +61,8 @@ class RailsLogStat
       @requests[@current_request].unshift if @requests[@current_request].size > @max_stats_per_request  # pop out oldest request stats if buffer is full
     elsif match = line.match( SQL_LOAD_MATCHER )
       if @current_request # guard against old queries that doesn't have leading request log
-        model_name, timing = match[1], match[2].to_f
-        @current_request_stats.sql_stats[model_name] << timing
+        model_name, operation, timing = match[1], match[2], match[3].to_f
+        @current_request_stats.sql_stats["#{operation.rjust(8)} #{model_name}"] << timing
       end
     elsif match = line.match( RENDERED_MATCHER )
       rendered_file_name, timing = match[1], match[2].to_f
