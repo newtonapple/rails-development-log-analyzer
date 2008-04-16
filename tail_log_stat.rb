@@ -57,7 +57,7 @@ class RailsLogStat
     if match = line.match( REQUEST_BEGIN_MATCHER )  
       request, method  = match[1], match[2]
       @current_request = "#{request} [#{method}]"   # => "ActionController#index [GET]"
-      @current_request_stats = (@requests[@current_request] << RequestStatistics.new).last # newest request stats is the one that just pushed into the buffer
+      @current_request_stats = (@requests[@current_request] << RequestStatistics.new).last # newest request stats is the one that just got pushed into the buffer
       @requests[@current_request].unshift if @requests[@current_request].size > @max_stats_per_request  # pop out oldest request stats if buffer is full
     elsif match = line.match( SQL_LOAD_MATCHER )
       if @current_request # guard against old queries that doesn't have leading request log
@@ -134,37 +134,57 @@ if __FILE__ == $0
   
   log_stat = RailsLogStat.new ARGV[0]
   log_stat.parse_log_file ARGV[1] || 'tail -f'
-  
   header_spacing = "\t"
-  spacing = "\t" * 3
-  headers = 'QUERIES / REQUEST' + header_spacing + 'TOTAL TIME SPENT / REQUEST' + header_spacing + 'MODEL NAME'
+  spacing = "\t"
+  SQL_STATS_HEADERS = [ 'QUERIES / REQUEST', 'TOTAL TIME SPENT / REQUEST', 'MODEL NAME' ]
+  SQL_STATS_HEADERS_OUTPUT = SQL_STATS_HEADERS.join( header_spacing )
   
+  RENDERED_STATS_HEADERS = [ 'RENDERED / REQUEST', 'TOTAL TIME SPENT / REQUEST', 'TEMPLATE NAME' ]
+  RENDERED_STATS_HEADERS_OUTPUT = RENDERED_STATS_HEADERS.join( header_spacing )
+
+  SEPERATOR = '=' * 80
+  DATA_SEPERATOR = '-' * 80
+  
+  # Command Loop
   loop do 
     puts "\n"
-    puts "Usage: 'r' to list requests; type 'request name' for stats..."
-    if (input = STDIN.gets.strip) == 'r'
+    puts "Usage: 'l' to list requests; type ('s' or 'r' '[request#name]') for sql & rendered stats..."
+    case input = STDIN.gets.strip
+    when 'l', 'ls', 'req', 'request', 'requests'
       log_stat.request_names.each { |request_name| puts "--->  #{request_name}" }
-    elsif input == 'q'
+    when 'q', 'quit', 'exit'
       puts 'Bye!'
-      exit
-    else
-      if log_stat.request_names.include? input
-        puts "#{'='*80}"
-        puts "#{input}: #{log_stat.request_count input} calls."
-        puts "#{'='*80}"
-        puts headers
-        puts '-' * 80
-        stats = log_stat.sql_averges_for_request(input)
+      exit      
+    when /^(s|r)\S*\s+(\S+#.+\])$/   # s ApplictionController#index [GET], render ApplictionController#index [GET]
+      request_name = $2
+      if log_stat.request_names.include? request_name
+        if ($1 == 's') # s => sql_stats
+          stat_type = :sql_stats 
+          headers, headers_output = SQL_STATS_HEADERS, SQL_STATS_HEADERS_OUTPUT
+        else # r => sql_stats
+          stat_type = :rendered_stats
+          headers, headers_output = SQL_STATS_HEADERS, SQL_STATS_HEADERS_OUTPUT
+        end
+        
+        output = [SEPERATOR, "#{request_name}: #{log_stat.request_count request_name} calls.", 
+                  SEPERATOR, headers_output, DATA_SEPERATOR] 
+        
+        stats = log_stat.averages_for_request( request_name, stat_type )
         stats.sort!{ |stat1, stat2| stat2[1] <=> stat1[1] }
         stats.each do |stat|
-          total_time_spent_per_request  = ('%.2f' % stat[0] )
-          total_loads_per_request  = ('%.6f' % stat[1] )
-          puts total_time_spent_per_request + spacing + total_loads_per_request + spacing + stat[2].to_s
+          total_time_spent_per_request  = ("%.2f" % stat[0] )
+          total_appearances_per_request  = ( "%.6f" % stat[1] )
+          output << [ total_time_spent_per_request.center(headers[0].size), 
+                      total_appearances_per_request.center(headers[1].size), 
+                      stat[2].to_s] * spacing
         end
-        puts "#{'='*80}"
+        output << SEPERATOR
+        puts output.join( "\n" )
       else
         puts 'ERROR: request not found...'
       end
+    else
+      puts 'ERROR: command not recongized'
     end
   end
 end
