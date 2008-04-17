@@ -78,17 +78,9 @@ class RailsLogStat
     end
   end
   
-  # Array of [ avg. # loads per request,   avg. time per request, model class name ]
+  # Array of [ avg. count per request,   avg. time per request, model class name ]
   # notes average over the union might not be a good enough metrics, b/c some request might contain very little or no loads info for a specific model
-  # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with
-  def sql_averges_for_request request
-    averages_for_request request, :sql_stats
-  end
-  
-  def rendered_averages_for_request request
-    averages_for_request request, :rendered_stats
-  end
-  
+  # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with  
   def averages_for_request request, stat_type
     unless (num_of_requests = @requests[request].size) == 0
       # union of all stat names
@@ -147,8 +139,7 @@ if __FILE__ == $0
   
   # Command Loop
   loop do 
-    puts "\n"
-    puts "Usage: 'l' to list requests; type ('s' or 'r' '[request#name]') for sql & rendered stats..."
+    puts "\nUsage: 'l' to list requests; type ('s' or 'r' '[request#name]') for sql & rendered stats..."
     case input = STDIN.gets.strip
     when 'l', 'ls', 'req', 'request', 'requests'
       log_stat.request_names.each { |request_name| puts "--->  #{request_name}" }
@@ -161,7 +152,7 @@ if __FILE__ == $0
         if ($1 == 's') # s => sql_stats
           stat_type = :sql_stats 
           headers, headers_output = SQL_STATS_HEADERS, SQL_STATS_HEADERS_OUTPUT
-        else # r => sql_stats
+        else # r => rendered_stats
           stat_type = :rendered_stats
           headers, headers_output = SQL_STATS_HEADERS, SQL_STATS_HEADERS_OUTPUT
         end
@@ -173,7 +164,7 @@ if __FILE__ == $0
         stats.sort!{ |stat1, stat2| stat2[1] <=> stat1[1] }
         stats.each do |stat|
           total_time_spent_per_request  = ("%.2f" % stat[0] )
-          total_appearances_per_request  = ( "%.6f" % stat[1] )
+          total_appearances_per_request = ( "%.6f" % stat[1] )
           output << [ total_time_spent_per_request.center(headers[0].size), 
                       total_appearances_per_request.center(headers[1].size), 
                       stat[2].to_s] * spacing

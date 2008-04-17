@@ -3,7 +3,7 @@
 rails_log_stat.rb parses a given Rails development log file and builds an in-memory data structure to provide various statistics about your Rails app.  
 
 The two primary statistics that the program currenting provides are:
-* SQL total time span and query calls on a per Model per request basis.
+* SQL total time span and query calls on a per model per request basis.
 * Rendered time break down on a per template per request basis.
 
 rails_log_stat.rb is a very easy way to gain some perspectives about the bottlenecks of your Rails application (most of the time is due to slow SQLs).
