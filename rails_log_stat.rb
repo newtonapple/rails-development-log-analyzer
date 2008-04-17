@@ -19,7 +19,7 @@ class RailsLogStat
   
   # ModelClassName Load (0.000292)SELECT * FROM `answers` WHERE `id` = 2000
   # $1 => ModelClassName, $2 => Load, $3 => 0.0453, $4 => SELECT
-  SQL_LOAD_MATCHER = /([A-Z]\S+)\s+(Load|Update|Create|Destroy).+\((\d+\.\d+)\).+(SELECT|UPDATE|INSERT|DELETE)/
+  SQL_MATCHER = /([A-Z]\S+)\s+(Load|Update|Create|Destroy).+\((\d+\.\d+)\).+(SELECT|UPDATE|INSERT|DELETE)/
   
   # Rendered layout/application (0.00995)
   # $1 => layout/application, $2 => 0.00995
@@ -59,7 +59,7 @@ class RailsLogStat
       @current_request = "#{request} [#{method}]"   # => "ActionController#index [GET]"
       @current_request_stats = (@requests[@current_request] << RequestStatistics.new).last # newest request stats is the one that just got pushed into the buffer
       @requests[@current_request].shift if @requests[@current_request].size > @max_stats_per_request  # pop out oldest request stats if buffer is full
-    elsif match = line.match( SQL_LOAD_MATCHER )
+    elsif match = line.match( SQL_MATCHER )
       if @current_request # guard against old queries that doesn't have leading request log
         model_name, operation, timing = match[1], match[2], match[3].to_f
         @current_request_stats.sql_stats["#{operation.rjust(8)} #{model_name}"] << timing
