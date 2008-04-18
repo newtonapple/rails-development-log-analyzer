@@ -1,4 +1,3 @@
-require 'set'
 class RailsLogStat
   
   class RequestStats
