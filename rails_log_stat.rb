@@ -1,21 +1,68 @@
 require 'set'
 class RailsLogStat
   
-  class RequestStatistics
-    attr_accessor :sql_stats         # {'Article' => [0.2, 0.42332...], 'Body' => [0.45, 0.5923...], ... }
-    attr_accessor :rendered_stats    # {'/layout/application' => [0.2, 0.42332...], 'resources/edit' => [0.45, 0.5923...], ... }
-    attr_accessor :completion_time, :rendering_time, :db_time
-    attr_accessor :http_status, :url
+  class RequestStats
+    attr_accessor :sql_stats, :rendered_stats
+    attr_reader :completion_time, :rendering_time, :db_time, :http_status, :url, :size
     
-    def initialize
-      @sql_stats, @rendered_stats = Hash.new{ |hash,key| hash[key]=[] }, Hash.new{ |hash,key| hash[key]=[] }
+    def initialize max_size
+      @max_size, @size, @index = max_size, 0, -1
+      @sql_stats       = Hash.new{ |hash,key| hash[key] = RequestStatsCollection.new(max_size) }
+      @rendered_stats  = Hash.new{ |hash,key| hash[key] = RequestStatsCollection.new(max_size) }
+      @completion_time, @rendering_time, @db_time, @http_status, @url = * Array.new(5, [])
+    end
+    
+    def accept_request
+      @index = (@index + 1) % @max_size
+      @size += 1 if @size < @max_size
+      self
+    end
+    
+    # stat_type => :sql_stats or :rendered_stats
+    def push stat_type, stat_name, timing
+      stat = send stat_type
+      stat[stat_name][@index] << timing
+    end
+    
+    # use one store method instead?
+    %w{completion_time rendering_time db_time http_status url}.each do |stat_name|
+      define_method "#{stat_name}=" do |value| 
+        send(stat_name)[@index] = value 
+      end
+    end
+    
+    def collection_average stat_type
+      stat = send stat_type
+      size = @size.to_f
+      stat.collect do |stat_name, stat_collection|
+        [ stat_collection.sum_all_appearances/size, stat_collection.sum_all_timings/size, stat_name ]
+      end
+    end
+  end
+    
+  class RequestStatsCollection < Array
+    def initialize size 
+      super( size, Array.new )
+    end
+    
+    def sum_all_appearances
+      inject(0) do |sum, timings|
+        sum += timings.size
+      end
+    end
+    
+    # note size doesn't matter here, the empty timing arrays will sum up to zero
+    def sum_all_timings
+      inject(0) do |sum, timings| 
+        sum += timings.inject(0){ |sum_of_timings, t| sum_of_timings += t }
+      end
     end
   end
   
+  
   # Processing IndexController#index (for 127.0.0.1 at 2008-04-13 06:40:20) [GET]
   # $1 => 'ActionController#index', $2 => 'GET'
-  REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST)\]$/  
-  
+  REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST)\]$/
   
   # ModelClassName Load (0.000292)SELECT * FROM `answers` WHERE `id` = 2000
   # $1 => ModelClassName, $2 => Load, $3 => 0.0453, $4 => SELECT
@@ -29,21 +76,15 @@ class RailsLogStat
   # $1 => 3.48602, $2 => 1.53868, $3 => 44, $4 => 0.79623, $5 => 22, $6 => 200 OK, $7 => http://www.example.com
   REQUEST_COMPLETION_MATCHER = /^Completed in (\d+\.\d+).+Rendering: (\d+\.\d+) \((\d+)%\).+DB: (\d+\.\d+) \((\d+)%\) \| ([1-5]\d{2} \S+) \[(.+)\]$/
     
-  attr_accessor :log_file_path, :max_stats_per_request
+  attr_accessor :log_file_path  # , :max_stats_per_request
 
-  def initialize log_file_path, max_stats_per_request=25
-    # sample @request hash
-    # { 
-    #   'Article#index[POST]' => [ request_statistics_1, request_statistics_2, ..],
-    #   'Article#index[GET]' => [ request_statistics_1, request_statistics_2, ..],
-    #   ...
-    # }
-    @requests = Hash.new{ |hash,key| hash[key]=[] }
-    @current_request = nil
+  def initialize log_file_path, max_stats_per_request=50
     @log_file_path, @max_stats_per_request = log_file_path, max_stats_per_request
+    @requests = Hash.new{ |hash,key| hash[key] = RequestStats.new( @max_stats_per_request ) }
+    @current_request = nil
   end
   
-  def parse_log_file command="tail -f"
+  def parse_log_file command="tail +0 -f"
     @log_thread ||= Thread.new do
       pipe = IO.popen "#{command.strip} #{log_file_path}", 'r'  # new pipe for tailing a text file
       while message_line = pipe.gets
@@ -57,16 +98,15 @@ class RailsLogStat
     if match = line.match( REQUEST_BEGIN_MATCHER )  
       request, method  = match[1], match[2]
       @current_request = "#{request} [#{method}]"   # => "ActionController#index [GET]"
-      @current_request_stats = (@requests[@current_request] << RequestStatistics.new).last # newest request stats is the one that just got pushed into the buffer
-      @requests[@current_request].shift if @requests[@current_request].size > @max_stats_per_request  # pop out oldest request stats if buffer is full
+      @current_request_stats = @requests[@current_request].accept_request
     elsif match = line.match( SQL_MATCHER )
       if @current_request # guard against old queries that doesn't have leading request log
-        model_name, operation, timing = match[1], match[2], match[3].to_f
-        @current_request_stats.sql_stats["#{operation.rjust(8)} #{model_name}"] << timing
+        model_name, operation, timing = "#{operation.rjust(8)} #{match[1]}", match[2], match[3].to_f 
+        @current_request_stats.push( :sql_stats, model_name, timing )
       end
     elsif match = line.match( RENDERED_MATCHER )
       rendered_file_name, timing = match[1], match[2].to_f
-      @current_request_stats.rendered_stats[rendered_file_name] << timing
+      @current_request_stats.push( :rendered_stats, rendered_file_name, timing )
     elsif match = line.match( REQUEST_COMPLETION_MATCHER )
       if @current_request
         @current_request_stats.completion_time = match[0].to_f
@@ -81,27 +121,8 @@ class RailsLogStat
   # Array of [ avg. count per request,   avg. time per request, model class name ]
   # notes average over the union might not be a good enough metrics, b/c some request might contain very little or no loads info for a specific model
   # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with  
-  def averages_for_request request, stat_type
-    unless (num_of_requests = @requests[request].size) == 0
-      # union of all stat names
-      stat_names = @requests[request].inject(Set.new){ |stat_names, request_stats| stat_names |= Set.new(request_stats.send(stat_type).keys) }.to_a
-      timing_sums = Hash.new{ |hash,key| hash[key]=0.0 }
-      count_sums = Hash.new{ |hash,key| hash[key]=0 }
-      
-      @requests[request].each do |request_stats|
-        stat_names.each do |stat_name|
-          # note, this can modify request_stats's keys since we have default hashes
-          timing_sums[stat_name] += request_stats.send(stat_type)[stat_name].inject(0.0){ |sum, t| sum += t } 
-          count_sums[stat_name]  += request_stats.send(stat_type)[stat_name].size
-        end
-      end
-      
-      num_of_requests = num_of_requests.to_f
-      stat_names.collect do |stat_name|
-        [ count_sums[stat_name] / num_of_requests, timing_sums[stat_name] / num_of_requests, stat_name ]
-      end
-    else
-      []
+  def averages_for_request request, stat_type    
+      @requests[request].collection_average[ stat_type ]
     end
   end
   
