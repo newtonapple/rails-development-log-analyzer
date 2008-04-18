@@ -42,7 +42,7 @@ class RailsLogStat
     
   class RequestStatsCollection < Array
     def initialize size 
-      super( size, Array.new )
+      super( size ) { Array.new }
     end
     
     def sum_all_appearances
@@ -101,7 +101,8 @@ class RailsLogStat
       @current_request_stats = @requests[@current_request].accept_request
     elsif match = line.match( SQL_MATCHER )
       if @current_request # guard against old queries that doesn't have leading request log
-        model_name, operation, timing = "#{operation.rjust(8)} #{match[1]}", match[2], match[3].to_f 
+        operation, timing = match[2], match[3].to_f 
+        model_name = "#{operation.rjust(8)} #{match[1]}"
         @current_request_stats.push( :sql_stats, model_name, timing )
       end
     elsif match = line.match( RENDERED_MATCHER )
@@ -122,8 +123,7 @@ class RailsLogStat
   # notes average over the union might not be a good enough metrics, b/c some request might contain very little or no loads info for a specific model
   # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with  
   def averages_for_request request, stat_type    
-      @requests[request].collection_average[ stat_type ]
-    end
+    @requests[request].collection_average( stat_type ) 
   end
   
   def request_names
@@ -146,7 +146,8 @@ if __FILE__ == $0
   end
   
   log_stat = RailsLogStat.new ARGV[0]
-  log_stat.parse_log_file ARGV[1] || 'tail -f'
+  log_stat.parse_log_file ARGV[1] || 'tail +0 -f'
+    
   header_spacing = "\t"
   spacing = "\t"
   SQL_STATS_HEADERS = [ 'QUERIES / REQUEST', 'TOTAL TIME SPENT / REQUEST', 'MODEL NAME' ]
