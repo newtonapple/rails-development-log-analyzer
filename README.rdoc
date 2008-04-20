@@ -14,9 +14,9 @@ will help you find those slow queries and lagging renders a lot faster.
 = Usage
 
 == Tail your Rails development log
-  ruby rails_log_stat.rb /path/to/your/development.log 'tail 0+ -f'
+  ruby rails_log_stat.rb /path/to/your/development.log 'tail +0 -f'
 
-Note: 'tail 0+ -f' is optional and is used by default (it pipes all contents in the log file to the analyzer and then streams the new incoming tails).
+Note: 'tail +0 -f' is optional and is used by default (it pipes all contents in the log file to the analyzer and then streams the new incoming tails).
 After running this command just run your App as you normally would w/ SQL log turned on.  
 Or, you can hop to problematic area and run through some scenarios.  After you are satisfied, you should come back to the log analyzer and look at your statistics.  
 

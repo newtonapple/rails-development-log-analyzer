@@ -30,6 +30,16 @@ class RailsLogStat
       end
     end
     
+    def reset
+      [@sql_stats, @rendered_stats].each do |stat_type|
+        stat_type.values { | req_stat_collction | req_stat_collction.reset @index }
+      end
+      
+      [@completion_time, @rendering_time, @db_time, @http_status, @url].each do |stat_type|
+        stat_type[@index] = nil
+      end
+    end
+    
     def collection_average stat_type
       stat = send stat_type
       size = @size.to_f
@@ -42,6 +52,10 @@ class RailsLogStat
   class RequestStatsCollection < Array
     def initialize size 
       super( size ) { Array.new }
+    end
+    
+    def reset indx
+      self[indx] = Array.new
     end
     
     def sum_all_appearances
@@ -77,7 +91,7 @@ class RailsLogStat
     
   attr_accessor :log_file_path  # , :max_stats_per_request
 
-  def initialize log_file_path, max_stats_per_request=50
+  def initialize log_file_path, max_stats_per_request=1
     @log_file_path, @max_stats_per_request = log_file_path, max_stats_per_request
     @requests = Hash.new{ |hash,key| hash[key] = RequestStats.new( @max_stats_per_request ) }
     @current_request = nil
@@ -146,7 +160,7 @@ if __FILE__ == $0
   
   log_stat = RailsLogStat.new ARGV[0]
   log_stat.parse_log_file ARGV[1] || 'tail +0 -f'
-    
+      
   header_spacing = "\t"
   spacing = "\t"
   SQL_STATS_HEADERS = [ 'QUERIES / REQUEST', 'TOTAL TIME SPENT / REQUEST', 'MODEL NAME' ]
