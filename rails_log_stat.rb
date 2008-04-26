@@ -91,7 +91,7 @@ class RailsLogStat
     
   attr_accessor :log_file_path  # , :max_stats_per_request
 
-  def initialize log_file_path, max_stats_per_request=1
+  def initialize log_file_path, max_stats_per_request=50
     @log_file_path, @max_stats_per_request = log_file_path, max_stats_per_request
     @requests = Hash.new{ |hash,key| hash[key] = RequestStats.new( @max_stats_per_request ) }
     @current_request = nil
