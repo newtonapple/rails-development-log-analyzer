@@ -39,7 +39,7 @@ describe RailsLogStat, "single request statistics" do
   it 'should have correct average total database time per request with only one Model / SQL type' do
     load_times = [ 3.001, 2.5, 2.0023 ]
     load_times.each { |load_time| @log_stat.parse_line "User Load (#{load_time}) SELECT * FROM users" }
-    averages = @log_stat.averages_for_request( @request_name, :sql_stats )
+    averages = @log_stat.averages_for_request( @request_name, :sql )
     
     averages.size.should == 1
     sql_count, load_time_average = averages.first
@@ -57,7 +57,7 @@ describe RailsLogStat, "single request statistics" do
       @log_stat.parse_line "User Update (#{update_times[i]}) UPDATE users set viewed = 1 where id = #{i}"
     end
 
-    averages = @log_stat.averages_for_request( @request_name, :sql_stats )
+    averages = @log_stat.averages_for_request( @request_name, :sql )
     averages.size.should == 2
 
     sql_load_count, load_time_average = averages.detect{ |avg| avg.last =~ /Load/ }
