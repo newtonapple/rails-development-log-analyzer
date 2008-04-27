@@ -75,7 +75,7 @@ class RailsLogStat
   
   # Processing IndexController#index (for 127.0.0.1 at 2008-04-13 06:40:20) [GET]
   # $1 => 'ActionController#index', $2 => 'GET'
-  REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST)\]$/
+  REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST|PUT|DELETE)\]$/
   
   # ModelClassName Load (0.000292)SELECT * FROM `answers` WHERE `id` = 2000
   # $1 => ModelClassName, $2 => Load, $3 => 0.0453, $4 => SELECT
@@ -148,7 +148,6 @@ class RailsLogStat
   end
     
 end
-
 
 if __FILE__ == $0
   exit if PLATFORM =~ /win32/
