@@ -75,7 +75,7 @@ class RailsLogStat
   
   # Processing IndexController#index (for 127.0.0.1 at 2008-04-13 06:40:20) [GET]
   # $1 => 'ActionController#index', $2 => 'GET'
-  REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST)\]$/
+  REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST|PUT|DELETE)\]$/
   
   # ModelClassName Load (0.000292)SELECT * FROM `answers` WHERE `id` = 2000
   # $1 => ModelClassName, $2 => Load, $3 => 0.0453, $4 => SELECT
@@ -135,7 +135,7 @@ class RailsLogStat
   # Array of [ avg. count per request,   avg. time per request, model class name ]
   # notes average over the union might not be a good enough metrics, b/c some request might contain very little or no loads info for a specific model
   # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with  
-  def averages_for_request request, stat_type    
+  def averages_for_request request, stat_type
     @requests[request].collection_average( stat_type ) 
   end
   
@@ -149,10 +149,9 @@ class RailsLogStat
     
 end
 
-
 if __FILE__ == $0
-  exit if PLATFORM =~ /win32/
-  exit unless STDOUT.tty?
+  exit if PLATFORM =~ /win32/ || !STDOUT.tty?
+  
   unless ARGV[0]
     puts 'You need to specify the path to the log file'
     exit
