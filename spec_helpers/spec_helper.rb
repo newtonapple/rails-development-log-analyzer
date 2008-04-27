@@ -1,5 +1,17 @@
 $: << File.expand_path(File.dirname(__FILE__) + '/../lib')
 
+# == Core Extensions
+class Array
+  def sum
+    inject(0){ |sum, elem| sum += elem }
+  end
+  
+  def avg
+    sum / (size > 0 ? size : 1).to_f   
+  end
+end
+
+# == Custom Matchers
 module LogLineMatchers
   
   # subcalss must define @extraction_attribtues in Regexp matching order
@@ -53,28 +65,35 @@ module LogLineMatchers
     end    
   end
 
-
-  # Rendered layout/application (0.00995)
-  # $1 => layout/application, $2 => 0.00995
-  # RENDERED_MATCHER = /^Rendered (\S+) \((\d+\.\d+)\)$/
-
   class RenderedMatcher < LogLineMatcher
     def initialize template, render_time
       @extraction_attribtues = ['Template', 'Time']
       super
     end    
   end
-  
-  def extract_model_name_and_ar_op_and_time_and_sql_op model_class_name, ar_operation, time, sql_operation
-    SqlMatcher.new model_class_name, ar_operation, time, sql_operation
+  class RequestCompletionMatcher < LogLineMatcher
+    def initialize completion_time, render_time, render_percentage, db_time, db_percentage, http_status, url
+      @extraction_attribtues = ['CompletionTime', 'RenderingTime', 'RenderingPercentage', 'DbTime', 'DbPercentage', 'HTTP_STATUS', 'URL']
+      super
+    end    
   end
   
-  def extract_controller_action_and_http_method controller_action, method
-    RequestBeginMatcher.new controller_action, method
+  def extract_begin_request_properties expected
+    RequestBeginMatcher.new expected[:controller_action], expected[:http_method]
   end
   
-  def extract_template_and_render_time template, render_time
-    RenderedMatcher.new template, render_time
+  def extract_sql_properties expected
+    SqlMatcher.new expected[:model_name], expected[:ar_op], expected[:time], expected[:sql_op]
+  end
+    
+  def extract_rendered_partial_properties expected
+    RenderedMatcher.new expected[:template], expected[:render_time]
+  end
+  
+
+  def extract_request_completion_properties expected
+    RequestCompletionMatcher.new expected[:completion_time], expected[:render_time], expected[:render_percent], 
+                                 expected[:db_time], expected[:db_percent], expected[:http_status], expected[:url]    
   end
   
 end

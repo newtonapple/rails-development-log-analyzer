@@ -135,7 +135,7 @@ class RailsLogStat
   # Array of [ avg. count per request,   avg. time per request, model class name ]
   # notes average over the union might not be a good enough metrics, b/c some request might contain very little or no loads info for a specific model
   # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with  
-  def averages_for_request request, stat_type    
+  def averages_for_request request, stat_type
     @requests[request].collection_average( stat_type ) 
   end
   
@@ -150,8 +150,8 @@ class RailsLogStat
 end
 
 if __FILE__ == $0
-  exit if PLATFORM =~ /win32/
-  exit unless STDOUT.tty?
+  exit if PLATFORM =~ /win32/ || !STDOUT.tty?
+  
   unless ARGV[0]
     puts 'You need to specify the path to the log file'
     exit
