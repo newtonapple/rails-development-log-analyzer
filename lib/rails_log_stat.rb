@@ -1,4 +1,6 @@
 # == RailsLogStat
+require 'rubygems'
+require 'ruby-debug'
 class RailsLogStat
       
   class RequestStatsBuffer < Array
@@ -154,7 +156,11 @@ class RailsLogStat
   
   # Completed in 3.48602 (0 reqs/sec) | Rendering: 1.53868 (44%) | DB: 0.79623 (22%) | 200 OK [http://www.example.com]
   # $1 => 3.48602, $2 => 1.53868, $3 => 44, $4 => 0.79623, $5 => 22, $6 => 200 OK, $7 => http://www.example.com
-  REQUEST_COMPLETION_MATCHER = /^Completed in (\d+\.\d+).+Rendering: (\d+\.\d+) \((\d+)%\).+DB: (\d+\.\d+) \((\d+)%\) \| ([1-5]\d{2} \S+) \[(.+)\]$/
+  REQUEST_COMPLETION_FULL_MATCHER = /^Completed in (\d+\.\d+).+Rendering: (\d+\.\d+) \((\d+)%\).+DB: (\d+\.\d+) \((\d+)%\) \| ([1-5]\d{2} \S+) \[(.+)\]$/
+  
+  # Completed in 3.48602 (0 reqs/sec) | DB: 0.79623 (22%) | 200 OK [http://www.example.com]
+  # $1 => 3.48602, $2 => 0.79623, $3 => 22, $4 => 200 OK, $5 => http://www.example.com
+  REQUEST_COMPLETION_NO_RENDER_MATCHER = /^Completed in (\d+\.\d+).+DB: (\d+\.\d+) \((\d+)%\) \| ([1-5]\d{2} \S+) \[(.+)\]$/
     
   attr_accessor :log_file_path  # , :max_stats_per_request
 
@@ -188,9 +194,13 @@ class RailsLogStat
     elsif match = line.match( RENDERED_MATCHER )
       rendered_file_name, timing = match[1], match[2].to_f
       @current_request_stats_buffer.add_stat( :rendered, rendered_file_name, timing )
-    elsif match = line.match( REQUEST_COMPLETION_MATCHER )
+    elsif match = line.match( REQUEST_COMPLETION_FULL_MATCHER )
       if @current_request
         @current_request_stats_buffer.add_completion_stats match[1].to_f, match[2].to_f, match[4].to_f, match[6], match[7]
+      end
+    elsif match = line.match( REQUEST_COMPLETION_NO_RENDER_MATCHER )
+      if @current_request
+        @current_request_stats_buffer.add_completion_stats match[1].to_f, 0.0, match[2].to_f, match[3], match[4]
       end
     end
   end

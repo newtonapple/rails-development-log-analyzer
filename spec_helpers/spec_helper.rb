@@ -73,7 +73,7 @@ module LogLineMatchers
       super
     end    
   end
-  class RequestCompletionMatcher < LogLineMatcher
+  class RequestCompletionFullMatcher < LogLineMatcher
     def initialize completion_time, render_time, render_percentage, db_time, db_percentage, http_status, url
       @extraction_attribtues = ['CompletionTime', 'RenderingTime', 'RenderingPercentage', 'DbTime', 'DbPercentage', 'HTTP_STATUS', 'URL']
       super
@@ -94,7 +94,7 @@ module LogLineMatchers
   
 
   def extract_request_completion_properties expected
-    RequestCompletionMatcher.new expected[:completion_time], expected[:render_time], expected[:render_percent], 
+    FullRequestCompletionFullMatcher.new expected[:completion_time], expected[:render_time], expected[:render_percent], 
                                  expected[:db_time], expected[:db_percent], expected[:http_status], expected[:url]    
   end
   
