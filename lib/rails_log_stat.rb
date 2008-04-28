@@ -1,5 +1,3 @@
-require 'rubygems'
-require 'ruby-debug'
 # == RailsLogStat
 class RailsLogStat
       
@@ -8,12 +6,14 @@ class RailsLogStat
     # == RequestStatsBuffer::Stats
     class Stats
       attr_accessor :sql, :rendered
-      attr_reader :completion_time, :rendering_time, :db_time, :http_status, :url, :size
+      attr_accessor :completion_time, :rendering_time, :db_time # completion stats
+      attr_accessor :http_status, :url 
 
       def initialize
         @sql       = Hash.new{ |hash,key| hash[key] = [] }
         @rendered  = Hash.new{ |hash,key| hash[key] = [] }
-        @completion_time, @rendering_time, @db_time, @http_status, @url = [nil]*5
+        @completion_time, @rendering_time, @db_time = 0.0, 0.0, 0.0
+        @http_status, @url = nil, nil
       end
 
       # stat_type => :sql or :rendered
@@ -35,9 +35,9 @@ class RailsLogStat
       end
     end
     
-    # == Instance methods
-    def initialize size=1 
-      @max_size = size
+    # === Instance methods
+    def initialize request_name='', max_size=50
+      @request_name, @max_size= request_name, max_size
       @stat_names = { :sql => {}, :rendered => {} }  # all unique names collected so far
       super() { Stats.new  }
     end
@@ -48,63 +48,98 @@ class RailsLogStat
       self
     end
     
+    
+    # === SQL & Rendered Statistics
     # stat_type => :sql or :rendered
     def add_stat stat_type, stat_name, timing
       @stat_names[stat_type][stat_name] = true  # union of all stat names that has been added; needs to clear empty stat_names when buffer spills
       last.add_stat stat_type, stat_name, timing
     end
     
-    def to_output stat_type
-      stat_output = RequestStatsOuput.new
+    def sum_of_stats stat_type, stat_name
+      inject(0.0){|sum, stats| sum += stats.sum(stat_type, stat_name) }
+    end
+    
+    def mean_of_stats stat_type, stat_name
+      size == 0 ? 0.0 : sum_of_stats(stat_type, stat_name) / size 
+    end
+    
+    def sum_of_counts stat_type, stat_name
+      inject(0.0){|sum, stats| sum += stats.count(stat_type, stat_name) }
+    end
+    
+    def mean_of_counts stat_type, stat_name
+      size == 0 ? 0.0 : sum_of_counts(stat_type, stat_name) / size 
+    end
+    
+    # === Completion Statistics
+    def add_completion_stats completion_time, rendering_time, db_time, http_status, url
+      last.completion_time, last.rendering_time, last.db_time, last.http_status, last.url = completion_time, rendering_time, db_time, http_status, url
+    end
+    
+    def sum_of_completion_stats stat_name
+      inject(0.0){|sum, stats| sum += stats.send(stat_name) }
+    end
+    
+    def mean_of_completion_stats stat_name
+      size == 0 ? 0.0 : sum_of_completion_stats(stat_name) / size
+    end
+    
+    %w{completion_time rendering_time db_time}.each do |stat_name|
+      define_method( "total_#{stat_name}"   ) { sum_of_completion_stats(stat_name)  }
+      define_method( "average_#{stat_name}" ) { mean_of_completion_stats(stat_name) }
+    end
+    
+    def to_stats_presenter stat_type
+      stat_presenter = RequestStatsPresenter.new @request_name, size, average_completion_time, average_rendering_time, average_db_time
       @stat_names[stat_type].keys.each do |stat_name|
-        stat_output[stat_name].request_count = size
-        each do |stats| 
-          stat_output[stat_name].sum += stats.sum( stat_type, stat_name )
-          stat_output[stat_name].count += stats.count( stat_type, stat_name )
-        end
+        stat_presenter[stat_name].average_count_per_request = mean_of_counts( stat_type, stat_name )
+        stat_presenter[stat_name].average_time_per_request  = mean_of_stats( stat_type, stat_name )
       end
-      stat_output
+      stat_presenter
+    end
+    
+    def to_completion_stats_presenter
+      RequestStatsPresenter.new @request_name, size, average_completion_time, average_rendering_time, average_db_time
     end
     
     # Array of [ avg. count per request,   avg. time per request, model class name ]
     # notes average over the union might not be a good enough metrics, b/c some request might contain very little or no loads info for a specific model
     # it's generally a good idea to control your inputs for a specific log, so results are resonably consistent to compare with  
     def stats_collection stat_type
-      to_output(stat_type).to_a
+      to_stats_presenter(stat_type).to_a
     end
   end
   
-  class RequestStatsOuput < Hash
+  # presents one type of stats (sql or rendered)
+  # plus general requests info
+  class RequestStatsPresenter < Hash
     class Stats
-      attr_accessor :sum, :count, :request_count, :high, :median, :low
+      attr_accessor :average_count_per_request, :average_time_per_request, :high, :median, :low
       def initialize *arg
-        @sum, @count, @request_count, @high, @median, @low = arg
-      end
-      
-      def mean
-        count == 0 ? 0.0 : sum / count.to_f
-      end
-      
-      def mean_of_sum
-        request_count == 0 ? 0.0 : sum / request_count.to_f
-      end
-      
-      def mean_of_count
-        request_count == 0 ? 0.0 : count / request_count.to_f
-      end
+        @average_count_per_request, @average_time_per_request, @high, @median, @low = arg
+      end      
     end
     
-    def initialize
-      super { |hash, key| hash[key] = Stats.new(0.0, 0, 0, 0.0, 0.0, 0.0) }
+    attr_accessor :request_name, :request_count, :average_completion_time, :average_rendering_time, :average_db_time
+    
+    def initialize request_name='', request_count=0, average_completion_time=0.0, average_rendering_time=0.0, average_db_time=0.0
+      @request_name, @request_count = request_name, request_count
+      @average_completion_time, @average_rendering_time, @average_db_time = average_completion_time, average_rendering_time, average_db_time
+      super() { |hash, key| hash[key] = Stats.new( *( [0.0] * 6) ) }
+    end
+    
+    def request_name_with_average_completion_time spacing=50
+      "---> #{request_name.ljust(spacing)}\t(Avg. Completion Time: #{sprintf("%.5f",average_completion_time)})"
     end
     
     def to_a
       collect do |stat_name, stats|
-        [stats.mean_of_count, stats.mean_of_sum, stat_name]
+        [stats.average_count_per_request, stats.average_time_per_request, stat_name]
       end
     end
-  end  
-  
+  end
+    
   # Processing IndexController#index (for 127.0.0.1 at 2008-04-13 06:40:20) [GET]
   # $1 => 'ActionController#index', $2 => 'GET'
   REQUEST_BEGIN_MATCHER = /Processing\s+(\S+Controller#\S+) \(for.+\) \[(GET|POST|PUT|DELETE)\]$/
@@ -125,7 +160,7 @@ class RailsLogStat
 
   def initialize log_file_path, max_stats_per_request=50
     @log_file_path, @max_stats_per_request = log_file_path, max_stats_per_request
-    @requests = Hash.new{ |hash,key| hash[key] = RequestStatsBuffer.new( @max_stats_per_request ) }
+    @requests = Hash.new{ |hash,key| hash[key] = RequestStatsBuffer.new( key, @max_stats_per_request ) }
     @current_request = nil
   end
   
@@ -147,7 +182,7 @@ class RailsLogStat
     elsif match = line.match( SQL_MATCHER )
       if @current_request # guard against old queries that doesn't have leading request log
         operation, timing = match[2], match[3].to_f 
-        model_name = "#{operation.rjust(8)} #{match[1]}"
+        model_name = "#{operation} #{match[1]}"
         @current_request_stats_buffer.add_stat( :sql, model_name, timing )
       end
     elsif match = line.match( RENDERED_MATCHER )
@@ -155,11 +190,7 @@ class RailsLogStat
       @current_request_stats_buffer.add_stat( :rendered, rendered_file_name, timing )
     elsif match = line.match( REQUEST_COMPLETION_MATCHER )
       if @current_request
-        # @current_request_stats.completion_time = match[0].to_f
-        # @current_request_stats.rendering_time  = match[2].to_f
-        # @current_request_stats.db_time         = match[4].to_f
-        # @current_request_stats.http_status     = match[6]
-        # @current_request_stats.url             = match[7]
+        @current_request_stats_buffer.add_completion_stats match[1].to_f, match[2].to_f, match[4].to_f, match[6], match[7]
       end
     end
   end
@@ -171,8 +202,19 @@ class RailsLogStat
     @requests[request].stats_collection( stat_type ) 
   end
   
+  def request_names_order_by_slowest
+    if @requests.empty?
+      []
+    else
+      max_spacing = @requests.keys.max{ |r1, r2| r1.size <=> r2.size }.size
+      presenters = @requests.values.collect{|buffer| buffer.to_completion_stats_presenter }
+      presenters.sort!{ |p1, p2| p2.average_completion_time <=> p1.average_completion_time }
+      presenters.collect{ |p| p.request_name_with_average_completion_time(max_spacing) }
+    end
+  end
+  
   def request_names
-    @requests.keys.sort
+    @requests.keys
   end
   
   def request_count request
@@ -208,12 +250,13 @@ if __FILE__ == $0
     puts "\nUsage: 'l' to list requests; type ('s' or 'r' '[request#name]') for sql & rendered stats..."
     case input = STDIN.gets.strip
     when 'l', 'ls', 'req', 'request', 'requests'
-      log_stat.request_names.each { |request_name| puts "--->  #{request_name}" }
+      log_stat.request_names_order_by_slowest.each { |request_line| puts request_line }
     when 'q', 'quit', 'exit'
       puts 'Bye!'
       exit      
     when /^(s|r)\S*\s+(\S+#.+\])$/   # s ApplictionController#index [GET], render ApplictionController#index [GET]
       request_name = $2
+      puts request_name
       if log_stat.request_names.include? request_name
         if ($1 == 's') # s => sql
           stat_type = :sql 
@@ -223,17 +266,14 @@ if __FILE__ == $0
           headers, headers_output = SQL_STATS_HEADERS, SQL_STATS_HEADERS_OUTPUT
         end
         
-        output = [SEPERATOR, "#{request_name}: #{log_stat.request_count request_name} calls.", 
-                  DATA_SEPERATOR, headers_output, DATA_SEPERATOR] 
+        output = [SEPERATOR, "#{request_name}: #{log_stat.request_count request_name} calls.", DATA_SEPERATOR, headers_output, DATA_SEPERATOR] 
         
         stats = log_stat.averages_for_request( request_name, stat_type )
         stats.sort!{ |stat1, stat2| stat2[1] <=> stat1[1] }
         stats.each do |stat|
           total_time_spent_per_request  = ("%.2f" % stat[0] )
           total_appearances_per_request = ( "%.6f" % stat[1] )
-          output << [ total_time_spent_per_request.center(headers[0].size), 
-                      total_appearances_per_request.center(headers[1].size), 
-                      stat[2].to_s] * spacing
+          output << [ total_time_spent_per_request.center(headers[0].size), total_appearances_per_request.center(headers[1].size), stat[2].to_s] * spacing
         end
         output << SEPERATOR
         puts output.join( "\n" )

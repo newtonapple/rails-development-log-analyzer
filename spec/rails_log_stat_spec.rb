@@ -1,7 +1,7 @@
 require File.dirname(__FILE__) + '/../spec_helpers/spec_helper'
 require 'rails_log_stat'
 
-describe RailsLogStat, "Matchers" do
+describe RailsLogStat, "RegExp Matchers" do
   include LogLineMatchers
   it 'should match initial request line' do
     'Processing IndexController#destroy (for 127.0.0.1 at 2008-04-13 06:43:02) [DELETE]'.should extract_begin_request_properties( :controller_action => 'IndexController#destroy',  :http_method => 'DELETE' )
@@ -67,8 +67,7 @@ describe RailsLogStat, "single request statistics" do
     sql_update_count, update_time_average = averages.detect{ |avg| avg.last =~ /Update/ }
     update_times.size.should == sql_update_count
     update_times.sum.should == update_time_average
-  end
-    
+  end    
 end
 
 
@@ -76,4 +75,31 @@ describe RailsLogStat, "multiple requests statistics" do
   it "should have correct statistics for multiple requests"
   it "should clear oldest statistics when buffer has gone over its maximum size"
   it "should have correct sql time averages when buffer is recycled"
+end
+
+
+describe RailsLogStat::RequestStatsBuffer, "multiple requests completion statistics" do
+  before(:each) do
+    log_stat = RailsLogStat.new 'file.log', 3
+    @completion_times = [5.2, 4.3, 1.0]
+    @rendering_times  = [2.0, 2.3, 0.1]
+    @db_times         = [3.2, 2.0, 0.9]
+    @completion_times.each_with_index do |completion_time, i|
+      log_stat.parse_line "Processing UsersController#index (for 127.0.0.1 at 2008-04-13 06:43:02) [GET]"
+      log_stat.parse_line "Completed in #{completion_time} (0 reqs/sec) | Rendering: #{@rendering_times[i]} (44%) | DB: #{@db_times[i]} (22%) | 200 OK [http://www.example.com]"
+    end
+    @request_stats_buffer = log_stat.instance_variable_get(:@requests)["UsersController#index [GET]"]
+  end
+  
+  it "should have correct average completion time" do
+    @completion_times.avg.should == @request_stats_buffer.average_completion_time
+  end
+  
+  it "should have correct average db time" do
+    @db_times.avg.should == @request_stats_buffer.average_db_time
+  end
+  
+  it "should have correct average rendering time" do
+    @rendering_times.avg.should == @request_stats_buffer.average_rendering_time
+  end
 end
