@@ -131,8 +131,8 @@ class RailsLogStat
       super() { |hash, key| hash[key] = Stats.new( *( [0.0] * 6) ) }
     end
     
-    def request_name_with_average_completion_time spacing=50
-      "---> #{request_name.ljust(spacing)}\t(Avg. Completion Time: #{sprintf("%.5f",average_completion_time)})"
+    def request_name_with_average_completion_time count, spacing=50
+      "---> #{request_name.ljust(spacing)}\t Avg. Completion Time: #{sprintf("%.5f",average_completion_time)} | Count: #{count}"
     end
     
     def to_a
@@ -218,8 +218,8 @@ class RailsLogStat
     else
       max_spacing = @requests.keys.max{ |r1, r2| r1.size <=> r2.size }.size
       presenters = @requests.values.collect{|buffer| buffer.to_completion_stats_presenter }
-      presenters.sort!{ |p1, p2| p2.average_completion_time <=> p1.average_completion_time }
-      presenters.collect{ |p| p.request_name_with_average_completion_time(max_spacing) }
+      presenters.sort!{ |p1, p2| p1.average_completion_time <=> p2.average_completion_time }
+      presenters.collect{ |p| p.request_name_with_average_completion_time(@requests[p.request_name].size, max_spacing) }
     end
   end
   
@@ -279,7 +279,7 @@ if __FILE__ == $0
         output = [SEPERATOR, "#{request_name}: #{log_stat.request_count request_name} calls.", DATA_SEPERATOR, headers_output, DATA_SEPERATOR] 
         
         stats = log_stat.averages_for_request( request_name, stat_type )
-        stats.sort!{ |stat1, stat2| stat2[1] <=> stat1[1] }
+        stats.sort!{ |stat1, stat2| stat1[1] <=> stat2[1] }
         stats.each do |stat|
           total_time_spent_per_request  = ("%.2f" % stat[0] )
           total_appearances_per_request = ( "%.6f" % stat[1] )
