@@ -1,6 +1,4 @@
 # == RailsLogStat
-require 'rubygems'
-require 'ruby-debug'
 class RailsLogStat
       
   class RequestStatsBuffer < Array
